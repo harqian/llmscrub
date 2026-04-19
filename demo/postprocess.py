@@ -17,11 +17,13 @@ from moviepy.video.fx import MultiplySpeed
 HERE = Path(__file__).parent
 RAW = HERE / "demo-raw.mp4"
 
-# from the recorded tape: scan command Enter ~4s, summary appears ~73s.
-# compress the scan-in-progress window.
-FF_START = 4.5
-FF_END = 72.0
-FF_SPEED = 6.0
+# from the recorded tape: scan command Enter pressed ~9s (after full command
+# is typed), vhs sleeps 90s covering the ~60s scan + buffer, so the next
+# interactive moment (dry-run typing) starts ~99s. compress this entire
+# "scanning in progress" window — user doesn't need to watch a blinking cursor.
+FF_START = 9.5
+FF_END = 99.0
+FF_SPEED = 20.0
 
 
 def chromatic_aberration(clip, amount=2):
@@ -37,7 +39,9 @@ def chromatic_aberration(clip, amount=2):
     return clip.transform(fx)
 
 
-def build_badge(w=260, h=90, label="FAST 6x"):
+def build_badge(w=280, h=90, label=None):
+    if label is None:
+        label = f"FAST {int(FF_SPEED)}x"
     """Build a rounded-corner badge PNG with the FF label."""
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)

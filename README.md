@@ -1,5 +1,7 @@
 # llmscrub
 
+![demo](demo/demo.gif)
+
 Sweep LLM agent logs (Claude Code, Codex) for leaked secrets and redact them in place.
 
 LLM agents accumulate surprising amounts of secret material in their logs: API keys pasted into prompts, `.env` files read into tool results, `curl -H "Authorization: Bearer ..."` commands, Supabase access tokens baked into MCP config, GCP service-account private keys from `cat credentials.json`, 1Password outputs that got piped to stdout. `llmscrub` stacks several detectors to find them and redacts in place with backups.
@@ -47,14 +49,13 @@ llmscrub scan -v               # also list affected files
 llmscrub redact --dry-run      # preview redactions
 llmscrub redact                # redact in place with backup to ~/.llmscrub/backups/<ts>/
 llmscrub redact --backup ""    # disable backup (not recommended)
-llmscrub redact --max-rounds 5 # more iterations (default 3)
-llmscrub redact --fast         # skip gitleaks (10-20× faster, lower recall)
+llmscrub redact --fast         # skip gitleaks (~10× faster, lower recall)
 llmscrub scan --fast           # same for scan
 ```
 
-### Why iteration?
+### The active-session log
 
-A single pass isn't always enough. If your diagnostic activity (grep, jq) prints a key to terminal while you're investigating, that output lands in the *current* session's log — and a second pass is needed to catch it. `llmscrub redact` loops until no new findings (capped by `--max-rounds`).
+When you run `llmscrub` from inside a Claude Code or Codex session, that session is itself being logged — and the log file keeps changing under the scanner's feet. By default `--skip-recent 10` excludes any file modified in the last 10 seconds so the tool doesn't race the runtime. That means the log for *this* session won't be fully clean until the session ends; run `llmscrub redact` from a fresh terminal afterward to finish the job, or set `--skip-recent 0` to include everything at your own risk.
 
 ### How redaction looks
 

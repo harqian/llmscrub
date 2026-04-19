@@ -14,17 +14,22 @@ def placeholder(raw: str, det: str) -> str:
 
 
 def validate_jsonl(path: Path) -> tuple[bool, str | None]:
+    """Return (ok, error). The error NEVER contains file content — just a
+    generic reason — because callers log it and a JSON parser error often
+    quotes the offending bytes, which could re-leak a secret."""
     if not str(path).endswith(".jsonl"):
         return True, None
     try:
         with path.open() as fh:
-            for i, line in enumerate(fh, 1):
+            for line in fh:
                 line = line.strip()
                 if line:
                     json.loads(line)
         return True, None
-    except Exception as e:
-        return False, f"line {i}: {e}"
+    except json.JSONDecodeError:
+        return False, "jsonl parse error"
+    except Exception:
+        return False, "read error"
 
 
 def apply(findings: Iterable[Finding], *,
@@ -34,7 +39,7 @@ def apply(findings: Iterable[Finding], *,
     for path, det, raw in findings:
         by_file[path].append((raw, det))
 
-    summary = {"files": 0, "subs": 0, "skipped": 0, "failed": []}
+    summary: dict = {"files": 0, "subs": 0, "skipped": 0, "failed": []}
     for path, items in by_file.items():
         if not path.exists():
             summary["skipped"] += 1

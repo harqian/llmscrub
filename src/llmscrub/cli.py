@@ -56,6 +56,28 @@ def cmd_scan(args):
     return 0
 
 
+def _filter_recent(findings, skip_recent_secs):
+    """Drop findings for files modified in the last N seconds."""
+    if skip_recent_secs <= 0:
+        yield from findings
+        return
+    import time
+    now = time.time()
+    skipped = set()
+    for path, det, raw in findings:
+        try:
+            if now - path.stat().st_mtime < skip_recent_secs:
+                skipped.add(str(path))
+                continue
+        except FileNotFoundError:
+            continue
+        yield path, det, raw
+    if skipped:
+        print(f"skipped {len(skipped)} actively-modified file(s) "
+              f"(< {skip_recent_secs:g}s old; use --skip-recent 0 to include)",
+              file=sys.stderr)
+
+
 def cmd_redact(args):
     roots = _expand(args.path or DEFAULT_TARGETS)
     roots = [r for r in roots if r.exists()]
@@ -70,41 +92,30 @@ def cmd_redact(args):
         backup.mkdir(parents=True, exist_ok=True)
         print(f"backup: {backup}")
 
-    total = Counter()
-    for round_n in range(1, args.max_rounds + 1):
-        print(f"\n== round {round_n} ==", flush=True)
-        findings = list(scan_all(roots, **_scan_kwargs(args)))
-        # dedupe by (file, raw) — detector doesn't matter for redaction
-        unique = {}
-        for path, det, raw in findings:
-            k = (str(path), raw)
-            if k not in unique:
-                unique[k] = (path, det, raw)
-        if not unique:
-            print("no findings — done")
-            break
-        print(f"findings: {len(findings)} / unique: {len(unique)}")
-        if args.dry_run:
-            # show summary once
-            det_ct = Counter(d for _, d, _ in unique.values())
-            for d, n in det_ct.most_common():
-                print(f"  {d:30s} {n}")
-            break
-        summary = apply(unique.values(), backup_dir=backup, dry_run=False)
-        total["files"] += summary["files"]
-        total["subs"] += summary["subs"]
-        total["failed"] += len(summary["failed"])
-        print(f"files: {summary['files']}  subs: {summary['subs']}  failed: {len(summary['failed'])}")
-        if summary["failed"]:
-            for f, err in summary["failed"]:
-                print(f"  FAIL {f}: {err}", file=sys.stderr)
-        if summary["files"] == 0:
-            break
-    else:
-        print(f"\nreached max rounds ({args.max_rounds})")
-
-    print(f"\ntotal files: {total['files']}  total subs: {total['subs']}")
-    return 0 if total["failed"] == 0 else 2
+    findings = list(_filter_recent(
+        scan_all(roots, **_scan_kwargs(args)), args.skip_recent))
+    unique = {}
+    for path, det, raw in findings:
+        k = (str(path), raw)
+        if k not in unique:
+            unique[k] = (path, det, raw)
+    if not unique:
+        print("no findings")
+        return 0
+    print(f"findings: {len(findings)} / unique: {len(unique)}")
+    if args.dry_run:
+        det_ct = Counter(d for _, d, _ in unique.values())
+        for d, n in det_ct.most_common():
+            print(f"  {d:30s} {n}")
+        return 0
+    summary = apply(unique.values(), backup_dir=backup, dry_run=False)
+    print(f"files: {summary['files']}  subs: {summary['subs']}  failed: {len(summary['failed'])}")
+    if summary["failed"]:
+        for f, _err in summary["failed"]:
+            # don't echo parser error messages — they may quote file content
+            print(f"  FAIL {f}: jsonl validation failed after write, restored from backup",
+                  file=sys.stderr)
+    return 0 if not summary["failed"] else 2
 
 
 def main(argv=None):
@@ -133,8 +144,10 @@ def main(argv=None):
     r.add_argument("--backup", default="~/.llmscrub/backups",
                    help="backup directory (default: ~/.llmscrub/backups; set to empty to disable)")
     r.add_argument("--dry-run", action="store_true", help="report without modifying")
-    r.add_argument("--max-rounds", type=int, default=3,
-                   help="max scan-redact iterations (default: 3)")
+    r.add_argument("--skip-recent", type=float, default=10.0,
+                   help="skip files modified in the last N seconds (default: 10), "
+                        "to avoid racing an actively-written session log. "
+                        "set to 0 to include every file.")
     add_scan_flags(r)
     r.set_defaults(func=cmd_redact)
 

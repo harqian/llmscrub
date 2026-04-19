@@ -1,6 +1,6 @@
 # llmscrub
 
-![demo](demo/demo.gif)
+![demo](demo/demo.gif?v=2)
 
 Sweep LLM agent logs (Claude Code, Codex) for leaked secrets and redact them in place.
 

@@ -70,8 +70,21 @@ def run_gitleaks(roots) -> Iterator[Finding]:
                 yield (Path(file), f"gl:{rule}", raw)
 
 
-def scan_all(roots) -> Iterator[Finding]:
+def _is_placeholder(raw: str) -> bool:
+    """Skip our own placeholder strings if a scanner re-flags them."""
+    return "[REDACTED:" in raw
+
+
+def scan_all(roots, *, use_trufflehog=True, use_gitleaks=True, use_extras=True) -> Iterator[Finding]:
     """Run every available scanner. Caller dedupes."""
-    yield from run_trufflehog(roots)
-    yield from run_gitleaks(roots)
-    yield from scan_extra(roots)
+    def _filter(it):
+        for path, det, raw in it:
+            if not _is_placeholder(raw):
+                yield path, det, raw
+
+    if use_trufflehog:
+        yield from _filter(run_trufflehog(roots))
+    if use_gitleaks:
+        yield from _filter(run_gitleaks(roots))
+    if use_extras:
+        yield from _filter(scan_extra(roots))

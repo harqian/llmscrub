@@ -18,6 +18,14 @@ def _expand(paths):
     return [Path(os.path.expanduser(p)) for p in paths]
 
 
+def _scan_kwargs(args):
+    return dict(
+        use_trufflehog=not args.no_trufflehog,
+        use_gitleaks=not (args.fast or args.no_gitleaks),
+        use_extras=not args.no_extras,
+    )
+
+
 def cmd_scan(args):
     roots = _expand(args.path or DEFAULT_TARGETS)
     roots = [r for r in roots if r.exists()]
@@ -28,7 +36,7 @@ def cmd_scan(args):
     seen = set()
     by_det = Counter()
     by_file = Counter()
-    for path, det, raw in scan_all(roots):
+    for path, det, raw in scan_all(roots, **_scan_kwargs(args)):
         key = (str(path), det, raw)
         if key in seen:
             continue
@@ -64,8 +72,8 @@ def cmd_redact(args):
 
     total = Counter()
     for round_n in range(1, args.max_rounds + 1):
-        print(f"\n== round {round_n} ==")
-        findings = list(scan_all(roots))
+        print(f"\n== round {round_n} ==", flush=True)
+        findings = list(scan_all(roots, **_scan_kwargs(args)))
         # dedupe by (file, raw) — detector doesn't matter for redaction
         unique = {}
         for path, det, raw in findings:
@@ -107,9 +115,17 @@ def main(argv=None):
     p.add_argument("--version", action="version", version=f"llmscrub {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    def add_scan_flags(p):
+        p.add_argument("--fast", action="store_true",
+                       help="skip gitleaks (faster but lower recall; gitleaks is 10-20x slower on large dirs)")
+        p.add_argument("--no-trufflehog", action="store_true")
+        p.add_argument("--no-gitleaks", action="store_true")
+        p.add_argument("--no-extras", action="store_true")
+
     s = sub.add_parser("scan", help="report secrets found in logs (no modification)")
     s.add_argument("path", nargs="*", help=f"paths to scan (default: {' '.join(DEFAULT_TARGETS)})")
     s.add_argument("-v", "--verbose", action="store_true")
+    add_scan_flags(s)
     s.set_defaults(func=cmd_scan)
 
     r = sub.add_parser("redact", help="redact secrets in place (creates backup)")
@@ -119,6 +135,7 @@ def main(argv=None):
     r.add_argument("--dry-run", action="store_true", help="report without modifying")
     r.add_argument("--max-rounds", type=int, default=3,
                    help="max scan-redact iterations (default: 3)")
+    add_scan_flags(r)
     r.set_defaults(func=cmd_redact)
 
     args = p.parse_args(argv)

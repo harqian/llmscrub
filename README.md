@@ -48,6 +48,8 @@ llmscrub redact --dry-run      # preview redactions
 llmscrub redact                # redact in place with backup to ~/.llmscrub/backups/<ts>/
 llmscrub redact --backup ""    # disable backup (not recommended)
 llmscrub redact --max-rounds 5 # more iterations (default 3)
+llmscrub redact --fast         # skip gitleaks (10-20× faster, lower recall)
+llmscrub scan --fast           # same for scan
 ```
 
 ### Why iteration?

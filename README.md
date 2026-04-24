@@ -20,26 +20,12 @@ Four layers:
    - Aggressive `KEY=VAL` redaction when the file context suggests a `.env` write
 4. **1Password sweep** (opt-in via `--op`) — pulls every concealed field from your signed-in 1Password vault and does exact-string matching against the logs. Catches values that are real secrets but don't look like one structurally (homegrown tokens, service passwords, anything the pattern detectors can't recognize). Filtered by entropy so short dictionary-word entries don't cause false positives.
 
-## What it scans by default
-
-- `~/.claude/projects/` — Claude Code's per-project JSONL session logs
-- `~/.codex/` — Codex sessions, TUI logs, shell snapshots
-
-Override with positional paths: `llmscrub scan /path/to/logs`.
-
 ## Install
 
 ```bash
 brew install harqian/tap/llmscrub
 ```
 
-This pulls in `trufflehog` and `gitleaks` as dependencies.
-
-Manual:
-```bash
-pip install llmscrub
-brew install trufflehog gitleaks
-```
 
 ## Usage
 
@@ -58,10 +44,6 @@ llmscrub redact --fast --op    # recommended for the second pass after a pattern
 ```
 
 The `--op` flag requires the 1Password CLI (`op`) installed and signed in (`op signin`). It walks every concealed field across all LOGIN/PASSWORD/DATABASE/SECURE_NOTE items, filters to plausible-looking secrets (entropy + length), then checks those values verbatim against the logs.
-
-### The active-session log
-
-When you run `llmscrub` from inside a Claude Code or Codex session, that session is itself being logged — and the log file keeps changing under the scanner's feet. By default `--skip-recent 10` excludes any file modified in the last 10 seconds so the tool doesn't race the runtime. That means the log for *this* session won't be fully clean until the session ends; run `llmscrub redact` from a fresh terminal afterward to finish the job, or set `--skip-recent 0` to include everything at your own risk.
 
 ### How redaction looks
 
@@ -128,6 +110,14 @@ Backups land in ~/.llmscrub/backups/<timestamp>/ — mention to the user they ma
 want a cleanup policy (e.g. keep last 7 days) once they're comfortable with the
 tool.
 ```
+
+## What it scans by default
+
+- `~/.claude/projects/` — Claude Code's per-project JSONL session logs
+- `~/.codex/` — Codex sessions, TUI logs, shell snapshots
+
+Override with positional paths: `llmscrub scan /path/to/logs`.
+
 
 ## Limitations
 

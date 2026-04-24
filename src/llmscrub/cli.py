@@ -26,6 +26,18 @@ def _scan_kwargs(args):
     )
 
 
+def _op_secrets(args) -> list | None:
+    if not getattr(args, "op", False):
+        return None
+    from .op import fetch_secrets
+    secrets = fetch_secrets()
+    if not secrets:
+        print("warning: --op: 1Password returned no secrets (is `op` signed in?)", file=sys.stderr)
+    else:
+        print(f"1Password: loaded {len(secrets)} secrets", file=sys.stderr)
+    return secrets or None
+
+
 def cmd_scan(args):
     roots = _expand(args.path or DEFAULT_TARGETS)
     roots = [r for r in roots if r.exists()]
@@ -36,7 +48,7 @@ def cmd_scan(args):
     seen = set()
     by_det = Counter()
     by_file = Counter()
-    for path, det, raw in scan_all(roots, **_scan_kwargs(args)):
+    for path, det, raw in scan_all(roots, **_scan_kwargs(args), op_secrets=_op_secrets(args)):
         key = (str(path), det, raw)
         if key in seen:
             continue
@@ -93,7 +105,7 @@ def cmd_redact(args):
         print(f"backup: {backup}")
 
     findings = list(_filter_recent(
-        scan_all(roots, **_scan_kwargs(args)), args.skip_recent))
+        scan_all(roots, **_scan_kwargs(args), op_secrets=_op_secrets(args)), args.skip_recent))
     unique = {}
     for path, det, raw in findings:
         k = (str(path), raw)
@@ -132,6 +144,8 @@ def main(argv=None):
         p.add_argument("--no-trufflehog", action="store_true")
         p.add_argument("--no-gitleaks", action="store_true")
         p.add_argument("--no-extras", action="store_true")
+        p.add_argument("--op", action="store_true",
+                       help="fetch all secrets from 1Password and scan for exact matches (requires op CLI + active session)")
 
     s = sub.add_parser("scan", help="report secrets found in logs (no modification)")
     s.add_argument("path", nargs="*", help=f"paths to scan (default: {' '.join(DEFAULT_TARGETS)})")

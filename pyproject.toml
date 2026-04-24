@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llmscrub"
-version = "0.1.2"
+version = "0.2.0"
 description = "Sweep LLM agent logs (Claude Code, Codex) for leaked secrets and redact them."
 readme = "README.md"
 requires-python = ">=3.9"

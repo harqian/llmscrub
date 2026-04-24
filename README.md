@@ -8,7 +8,7 @@ LLM agents accumulate surprising amounts of secret material in their logs: API k
 
 ## What it detects
 
-Three layers, all run on every invocation:
+Four layers:
 
 1. **[trufflehog](https://github.com/trufflesecurity/trufflehog)** — ~700 known-format detectors, many verified against live APIs
 2. **[gitleaks](https://github.com/gitleaks/gitleaks)** — regex-heavy ruleset, complementary to trufflehog (catches things like `curl -u user:pass` auth)
@@ -18,6 +18,7 @@ Three layers, all run on every invocation:
    - `Authorization: Bearer <token>` and `Basic <b64>` headers
    - URL-embedded passwords (`scheme://user:pass@host`)
    - Aggressive `KEY=VAL` redaction when the file context suggests a `.env` write
+4. **1Password sweep** (opt-in via `--op`) — pulls every concealed field from your signed-in 1Password vault and does exact-string matching against the logs. Catches values that are real secrets but don't look like one structurally (homegrown tokens, service passwords, anything the pattern detectors can't recognize). Filtered by entropy so short dictionary-word entries don't cause false positives.
 
 ## What it scans by default
 
@@ -51,7 +52,12 @@ llmscrub redact                # redact in place with backup to ~/.llmscrub/back
 llmscrub redact --backup ""    # disable backup (not recommended)
 llmscrub redact --fast         # skip gitleaks (~10× faster, lower recall)
 llmscrub scan --fast           # same for scan
+
+llmscrub scan --op             # also sweep all secrets from your 1Password vault
+llmscrub redact --fast --op    # recommended for the second pass after a pattern scan
 ```
+
+The `--op` flag requires the 1Password CLI (`op`) installed and signed in (`op signin`). It walks every concealed field across all LOGIN/PASSWORD/DATABASE/SECURE_NOTE items, filters to plausible-looking secrets (entropy + length), then checks those values verbatim against the logs.
 
 ### The active-session log
 
@@ -67,6 +73,15 @@ When you run `llmscrub` from inside a Claude Code or Codex session, that session
 The 8-char hash in the placeholder is `sha256(raw)[:8]` — collisions across rotated keys are visible, and you can correlate redactions without exposing the secret.
 
 JSONL files are validated after redaction; if validation fails the file is restored from backup.
+
+## What it found on the author's own machine
+
+| Run | Detectors | Files redacted | Notable |
+|--|--|--|--|
+| Initial pass (April 18) | trufflehog + gitleaks + extras | **88** | pattern-recognizable tokens (Supabase, GitHub PATs, Cloudflare keys, PEM blocks) |
+| 1Password pass (this release) | all of the above + `--op` | **44** additional, **860 substitutions** | 7 real secrets pattern scanners had missed — including one 46-char API token that had leaked verbatim into **17 separate conversation logs** |
+
+The pattern-based layer catches the structurally-recognizable tokens. The 1Password layer catches everything else — homegrown tokens, user passwords, anything your agent pasted that happens to live in your vault.
 
 ## Guarantees and non-guarantees
 

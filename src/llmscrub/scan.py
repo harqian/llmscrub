@@ -75,7 +75,25 @@ def _is_placeholder(raw: str) -> bool:
     return "[REDACTED:" in raw
 
 
-def scan_all(roots, *, use_trufflehog=True, use_gitleaks=True, use_extras=True) -> Iterator[Finding]:
+def scan_op_secrets(roots, secrets: list[str]) -> Iterator[Finding]:
+    """Exact-string scan for known 1Password secret values."""
+    if not secrets:
+        return
+    for root in roots:
+        p = Path(root)
+        files = [p] if p.is_file() else [f for f in p.rglob("*") if f.is_file()]
+        for f in files:
+            try:
+                text = f.read_text(errors="replace")
+            except Exception:
+                continue
+            for val in secrets:
+                if val in text:
+                    yield (f, "1Password", val)
+
+
+def scan_all(roots, *, use_trufflehog=True, use_gitleaks=True, use_extras=True,
+             op_secrets: "list[str] | None" = None) -> Iterator[Finding]:
     """Run every available scanner. Caller dedupes."""
     def _filter(it):
         for path, det, raw in it:
@@ -88,3 +106,5 @@ def scan_all(roots, *, use_trufflehog=True, use_gitleaks=True, use_extras=True) 
         yield from _filter(run_gitleaks(roots))
     if use_extras:
         yield from _filter(scan_extra(roots))
+    if op_secrets:
+        yield from _filter(scan_op_secrets(roots, op_secrets))
